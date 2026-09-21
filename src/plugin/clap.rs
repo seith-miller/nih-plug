@@ -4,6 +4,19 @@ use crate::prelude::{ClapFeature, RemoteControlsContext};
 /// Provides auxiliary metadata needed for a CLAP plugin.
 #[allow(unused_variables)]
 pub trait ClapPlugin: Plugin {
+    /// Called when the host asks the plugin to load a preset through the `clap.preset-load`
+    /// extension (Bitwig uses it to restore a DAWproject-embedded state). `location` is the file
+    /// path for a file-location preset, `load_key` selects within a container preset. Return
+    /// whether the preset was loaded. Defaults to unsupported. Main-thread call.
+    fn clap_load_preset(
+        &self,
+        _location_kind: u32,
+        _location: Option<&str>,
+        _load_key: Option<&str>,
+    ) -> bool {
+        false
+    }
+
     /// A unique ID that identifies this particular plugin. This is usually in reverse domain name
     /// notation, e.g. `com.manufacturer.plugin-name`.
     const CLAP_ID: &'static str;

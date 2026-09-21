@@ -37,6 +37,9 @@ use clap_sys::ext::params::{
     CLAP_PARAM_IS_MODULATABLE, CLAP_PARAM_IS_MODULATABLE_PER_NOTE_ID, CLAP_PARAM_IS_READONLY,
     CLAP_PARAM_IS_STEPPED, CLAP_PARAM_RESCAN_VALUES,
 };
+use clap_sys::ext::preset_load::{
+    clap_plugin_preset_load, CLAP_EXT_PRESET_LOAD, CLAP_EXT_PRESET_LOAD_COMPAT,
+};
 use clap_sys::ext::remote_controls::{
     clap_plugin_remote_controls, clap_remote_controls_page, CLAP_EXT_REMOTE_CONTROLS,
 };
@@ -51,6 +54,7 @@ use clap_sys::ext::voice_info::{
     clap_host_voice_info, clap_plugin_voice_info, clap_voice_info, CLAP_EXT_VOICE_INFO,
     CLAP_VOICE_INFO_SUPPORTS_OVERLAPPING_NOTES,
 };
+use clap_sys::factory::preset_discovery::clap_preset_discovery_location_kind;
 use clap_sys::fixedpoint::{CLAP_BEATTIME_FACTOR, CLAP_SECTIME_FACTOR};
 use clap_sys::host::clap_host;
 use clap_sys::id::{clap_id, CLAP_INVALID_ID};
@@ -232,6 +236,7 @@ pub struct Wrapper<P: ClapPlugin> {
     clap_plugin_render: clap_plugin_render,
 
     clap_plugin_state: clap_plugin_state,
+    clap_plugin_preset_load: clap_plugin_preset_load,
 
     clap_plugin_tail: clap_plugin_tail,
 
@@ -659,6 +664,9 @@ impl<P: ClapPlugin> Wrapper<P> {
             clap_plugin_state: clap_plugin_state {
                 save: Some(Self::ext_state_save),
                 load: Some(Self::ext_state_load),
+            },
+            clap_plugin_preset_load: clap_plugin_preset_load {
+                from_location: Some(Self::ext_preset_load_from_location),
             },
 
             clap_plugin_tail: clap_plugin_tail {
@@ -2333,6 +2341,8 @@ impl<P: ClapPlugin> Wrapper<P> {
             &wrapper.clap_plugin_render as *const _ as *const c_void
         } else if id == CLAP_EXT_STATE {
             &wrapper.clap_plugin_state as *const _ as *const c_void
+        } else if id == CLAP_EXT_PRESET_LOAD || id == CLAP_EXT_PRESET_LOAD_COMPAT {
+            &wrapper.clap_plugin_preset_load as *const _ as *const c_void
         } else if id == CLAP_EXT_TAIL {
             &wrapper.clap_plugin_tail as *const _ as *const c_void
         } else if id == CLAP_EXT_VOICE_INFO && P::CLAP_POLY_MODULATION_CONFIG.is_some() {
@@ -3133,6 +3143,34 @@ impl<P: ClapPlugin> Wrapper<P> {
                 false
             }
         }
+    }
+
+    unsafe extern "C" fn ext_preset_load_from_location(
+        plugin: *const clap_plugin,
+        location_kind: clap_preset_discovery_location_kind,
+        location: *const c_char,
+        load_key: *const c_char,
+    ) -> bool {
+        check_null_ptr!(false, plugin, (*plugin).plugin_data);
+        let wrapper = &*((*plugin).plugin_data as *const Self);
+
+        let location = if location.is_null() {
+            None
+        } else {
+            match CStr::from_ptr(location).to_str() {
+                Ok(s) => Some(s),
+                Err(_) => return false,
+            }
+        };
+        let load_key = if load_key.is_null() {
+            None
+        } else {
+            CStr::from_ptr(load_key).to_str().ok()
+        };
+
+        // File I/O is not realtime-safe, but preset-load is a main-thread call.
+        let plugin = wrapper.plugin.lock();
+        plugin.clap_load_preset(location_kind as u32, location, load_key)
     }
 
     unsafe extern "C" fn ext_state_load(
