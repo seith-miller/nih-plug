@@ -1834,6 +1834,12 @@ impl<P: ClapPlugin> Wrapper<P> {
         let task_posted = self.schedule_gui(Task::ParameterValuesChanged);
         nih_debug_assert!(task_posted, "The task queue is full, dropping task...");
 
+        // The host must also be told that every parameter value may have changed: CLAP requires a
+        // `params.rescan(CLAP_PARAM_RESCAN_VALUES)` after a state load, and clap-validator's
+        // state-reproducibility tests fail without it (values "changed without a rescan request").
+        let task_posted = self.schedule_gui(Task::RescanParamValues);
+        nih_debug_assert!(task_posted, "The task queue is full, dropping task...");
+
         // TODO: Right now there's no way to know if loading the state changed the GUI's size. We
         //       could keep track of the last known size and compare the GUI's current size against
         //       that but that also seems brittle.
