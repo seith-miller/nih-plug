@@ -3197,6 +3197,16 @@ impl<P: ClapPlugin> Wrapper<P> {
         }
         let length = u64::from_le_bytes(length_bytes);
 
+        // The length prefix comes from the stream, so it must be treated as untrusted: a host
+        // handing us garbage (clap-validator's `state-invalid-random` does exactly that) would
+        // otherwise make us attempt an absurd allocation and abort. No real state is remotely
+        // this large; refuse anything past a generous cap instead of trusting the prefix.
+        const MAX_STATE_BYTES: u64 = 256 * 1024 * 1024;
+        if length > MAX_STATE_BYTES {
+            nih_debug_assert_failure!("Implausible state length {}; refusing to load", length);
+            return false;
+        }
+
         let mut read_buffer: Vec<u8> = Vec::with_capacity(length as usize);
         if !read_stream(&*stream, read_buffer.spare_capacity_mut()) {
             nih_debug_assert_failure!(
