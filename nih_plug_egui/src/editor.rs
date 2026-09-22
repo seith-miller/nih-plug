@@ -111,8 +111,15 @@ where
                 if let Some(new_size) = egui_state.requested_size.swap(None) {
                     // Ask the plugin host to resize to self.size()
                     if context.request_resize() {
-                        // Resize the content of egui window
-                        queue.resize(PhySize::new(new_size.0, new_size.1));
+                        // Resize the content of the egui window. `new_size` is in logical points
+                        // (the same units the window was opened with), but the queue wants the
+                        // backing surface size in *physical* pixels — on a HiDPI display the
+                        // content would otherwise be drawn at a fraction of the window.
+                        let ppp = egui_ctx.pixels_per_point();
+                        queue.resize(PhySize::new(
+                            (new_size.0 as f32 * ppp).round() as u32,
+                            (new_size.1 as f32 * ppp).round() as u32,
+                        ));
                         egui_ctx.send_viewport_cmd(ViewportCommand::InnerSize(Vec2::new(
                             new_size.0 as f32,
                             new_size.1 as f32,
